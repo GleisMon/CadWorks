@@ -69,18 +69,17 @@ def model():
     return _CACHE
 
 
-def scene(ex, tmp, cutaway=False, crop=None):
+def scene(ex, tmp, cutaway=False, crop=None, split=0):
     m = model()
     parts = m["parts"]
     bat, bms = m["bat"]
     tube = cq.Workplane("YZ").circle(17).extrude(240, both=True).translate((0, 0, e.H + 17))
-    body = parts["body"]
+    bodies = [parts["body_front"], parts["body_rear"]]
     if cutaway:  # убираем ближнюю (-Y) половину корпуса, чтобы видеть содержимое
-        body = body.cut(cq.Workplane("XY").box(600, 200, 400).translate((0, -100, 150)))
-    items = [
-        (body, (0, 0, 0), "#a3abb5"),
-        (parts["lid"].translate((0, 0, e.BASE_H)), (0, 0, ex * 2.4), "#3a3d42"),
-    ]
+        bodies = [bd.cut(cq.Workplane("XY").box(600, 200, 400).translate((0, -100, 150))) for bd in bodies]
+    items = [(bd, (0, 0, 0), "#a3abb5") for bd in bodies]
+    items += [(parts[f"lid_{h}"].translate((0, 0, e.BASE_H)), (0, 0, ex * 2.4), "#3a3d42")
+              for h in ("front", "rear")]
     latches = m["latches"]
     if cutaway:  # защёлки убранной ближней стенки не показываем
         latches = [l for l in latches if l.val().Center().y > 0]
@@ -89,11 +88,18 @@ def scene(ex, tmp, cutaway=False, crop=None):
         items.append((tube, (0, 0, ex * 3.2), "#d2d5da"))
     if ex or cutaway:
         items += [
-            (parts["shelf"].translate((0, 0, e.SHELF_Z)), (0, 0, ex * 0.9), "#6b7078"),
+            (parts["shelf_front"].translate((0, 0, e.SHELF_Z)), (0, 0, ex * 0.9), "#6b7078"),
+            (parts["shelf_rear"].translate((0, 0, e.SHELF_Z)), (0, 0, ex * 0.9), "#6b7078"),
             (m["ctrl"], (0, 0, ex * 0.3), "#c4581e"),
             (bat, (0, 0, ex * 1.5), "#2f7bd1"),
             (bms, (0, -ex * 0.8, ex * 1.5), "#2e9e4a"),
         ]
+    if split:  # раздвинуть половины по X, без трубы и содержимого
+        moved = []
+        for sh, loc, col in items:
+            cx = sh.val().Center().x
+            moved.append((sh, (loc[0] + (split / 2 if cx > 0 else -split / 2), loc[1], loc[2]), col))
+        items = [it for it in moved if it[2] != "#d2d5da"]
     if crop:
         box = cq.Workplane("XY").box(*crop[1]).translate(crop[0])
         items = [(sh.intersect(box), loc, col) for sh, loc, col in items]
@@ -133,6 +139,7 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         render(scene(0, tmp), [-0.6, -1, 0.45], e.OUT / "preview.png", tmp)
         render(scene(55, tmp), [-0.6, -1, 0.55], e.OUT / "preview_exploded.png", tmp, zoom=0.42)
+        render(scene(0, tmp, split=60), [-0.35, -1, 0.3], e.OUT / "preview_halves.png", tmp, zoom=0.42)
         render(scene(0, tmp, cutaway=True), [0.12, -1, 0.12], e.OUT / "preview_cutaway.png", tmp)
         render(scene(0, tmp), [0.9, -0.5, -0.6], e.OUT / "preview_bottom.png", tmp)
         render(scene(0, tmp), [1, -0.15, 0.25], e.OUT / "preview_rear.png", tmp, zoom=0.36)

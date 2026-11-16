@@ -72,16 +72,18 @@ LID_OVER = 1.5         # свес крышки по периметру
 # «мёртвую точку»: закрытый замок держит сам, от тряски не открывается.
 # Координаты ниже -- от наружной плоскости стенки (y) и от верха основания (z).
 LATCH_X = (-70.0, 70.0)  # по две на каждой длинной стороне
-LATCH_P1 = (6.0, -22.0)  # ось рычага (пруток/гвоздь 3 мм, длина 12 мм)
+LATCH_P1 = (7.0, -24.0)  # ось рычага: винт M4 x 20 с гайкой
 LATCH_R = 9.0            # плечо рычага до оси серьги
 LATCH_DELTA = 16.0       # заход за мёртвую точку, градусы (~0.35 мм «щелчка»)
-LATCH_PRELOAD = 0.3      # натяг серьги, мм (в печатной детали серьга короче)
-LUG_HALF = 3.0           # полутолщина проушины на корпусе
-CHEEK_T = 2.5            # щёки рычага
-BAIL_T = 2.5             # плечи серьги
-BAIL_BAR_D = 3.0         # перекладина серьги
-PIN_D = 3.0              # ось рычага
-PEG_D = 2.9              # шипы серьги в отверстиях рычага (отверстия 3.2)
+BAIL_ARM_W = 7.0         # плечи серьги (ширина)
+LATCH_KY = LID_OVER + BAIL_ARM_W / 2 + 0.5  # перекладина серьги от стенки
+LATCH_PRELOAD = 0.2      # натяг серьги, мм (в печатной детали серьга короче)
+LUG_HALF = 4.5           # полутолщина проушины на корпусе (9 мм)
+CHEEK_T = 4.0            # щёки рычага
+BAIL_T = 3.5             # плечи серьги (толщина)
+BAIL_BAR_D = 4.5         # перекладина серьги
+PIN_D = 4.0              # ось рычага (M4)
+PEG_D = 3.8              # шипы серьги в отверстиях рычага (отверстия 4.1)
 GAP = 0.3
 
 # --- Рёбра на торцах и дне (эскиз 1, виды A/B и C) --------------------------
@@ -102,7 +104,17 @@ CHARGE_PORT = 16.2     # GX16 / разъём зарядки
 VENT_M12 = 12.4        # мембранный клапан (торец A)
 HOLE_CHAMFER = 0.8
 
-PRINT_BED = (256.0, 256.0)
+# --- Разрезка под принтер Bambu Lab P1S (стол 256 x 256 x 256) ---------------
+PRINT_BED = (256.0, 256.0, 256.0)
+# Корпус, крышка и полка длиннее стола -> режутся пополам по x=0.
+JOINT_FL_OUT = 9.0     # наружный фланец стыка корпуса (выступ от стенки)
+JOINT_FL_T = 5.0       # толщина фланца у каждой половины
+JOINT_BOLT_D = 3.4     # болты M3 x 14 + гайки
+JOINT_BOLT_Z = (16.0, 87.0, 158.0)  # высоты болтов на каждой боковой стороне
+LAP_LID = 12.0         # нахлёст половин крышки (ступенька)
+LAP_SHELF = 10.0       # нахлёст половин полки
+LAP_GAP = 0.15         # зазор в нахлёсте
+BOTTOM_RIBS = True     # рёбра на дне по эскизу (при печати нужны поддержки под дном)
 OUT = pathlib.Path(__file__).parent / "out"
 
 # =============================================================================
@@ -244,7 +256,7 @@ def _lat(y: float, z: float) -> tuple[float, float]:
 
 def latch_points() -> dict[str, tuple[float, float]]:
     """K -- центр перекладины серьги на зацепе, P1 -- ось рычага, P2 -- ось серьги."""
-    k = (4.0, LID_T + 0.1 + BAIL_BAR_D / 2)
+    k = (LATCH_KY, LID_T + 0.1 + BAIL_BAR_D / 2)
     p1 = LATCH_P1
     ux, uz = p1[0] - k[0], p1[1] - k[1]
     n = math.hypot(ux, uz)
@@ -275,13 +287,13 @@ def latch_lug() -> cq.Workplane:
     """Проушина на стенке, снизу скос 45° -- печать без поддержек."""
     p = latch_points()
     y1, z1 = p["P1"]
-    r = 3.6
+    r = PIN_D / 2 + 2.8
     top = z1 + r
     tip = y1 + r
     prof = [(-0.5, top), (y1, top), (tip, z1), (tip, z1 - 1.0), (-0.5, z1 - 1.0 - (tip + 0.5))]
     lug = _x_extrude(_yz(prof), -LUG_HALF, LUG_HALF)
     lug = lug.union(_x_extrude(_yz_circle(p["P1"], r), -LUG_HALF, LUG_HALF))
-    return lug.cut(_x_extrude(_yz_circle(p["P1"], PIN_D / 2 + 0.15), -10, 10))
+    return lug.cut(_x_extrude(_yz_circle(p["P1"], PIN_D / 2 + 0.15), -20, 20))
 
 
 def latch_lever() -> cq.Workplane:
@@ -290,24 +302,24 @@ def latch_lever() -> cq.Workplane:
     y1, z1 = p["P1"]
     x_in, x_out = LUG_HALF + GAP, LUG_HALF + GAP + CHEEK_T
     zb = z1 - 30.0
-    cheek_prof = [(0.4, zb), (8.0, zb), (8.0, z1), (0.4, z1)]
+    cheek_prof = [(0.4, zb), (9.5, zb), (9.5, z1), (0.4, z1)]
     lever = None
     for sx in (-1, 1):
         c = _x_extrude(_yz(cheek_prof), x_in, x_out)
-        c = c.union(_x_extrude(_yz_circle(p["P1"], 4.0), x_in, x_out))
-        c = c.union(_x_extrude(_yz_circle(p["P2"], 3.0), x_in, x_out))
+        c = c.union(_x_extrude(_yz_circle(p["P1"], PIN_D / 2 + 3.0), x_in, x_out))
+        c = c.union(_x_extrude(_yz_circle(p["P2"], PEG_D / 2 + 2.2), x_in, x_out))
         if sx < 0:
             c = c.mirror("YZ")
         lever = c if lever is None else lever.union(c)
-    web = _x_extrude(_yz([(5.5, zb), (8.0, zb), (8.0, z1 - 12), (5.5, z1 - 12)]), -x_out, x_out)
-    lip = _x_extrude(_yz([(8.0, zb), (10.5, zb + 0.5), (10.5, zb + 3.0), (8.0, zb + 4.5)]), -x_out, x_out)
+    web = _x_extrude(_yz([(5.5, zb), (9.5, zb), (9.5, z1 - 13), (5.5, z1 - 13)]), -x_out, x_out)
+    lip = _x_extrude(_yz([(9.5, zb), (12.5, zb + 0.5), (12.5, zb + 3.5), (9.5, zb + 5.5)]), -x_out, x_out)
     lever = lever.union(web).union(lip)
     try:
         lever = lever.edges("|X").fillet(0.6)
     except Exception:
         pass
-    lever = lever.cut(_x_extrude(_yz_circle(p["P1"], PIN_D / 2 + 0.05), -10, 10))  # ось -- плотная посадка
-    lever = lever.cut(_x_extrude(_yz_circle(p["P2"], 1.6), -10, 10))              # под шипы серьги
+    lever = lever.cut(_x_extrude(_yz_circle(p["P1"], PIN_D / 2 + 0.15), -20, 20))  # ось -- плотная посадка
+    lever = lever.cut(_x_extrude(_yz_circle(p["P2"], PEG_D / 2 + 0.15), -20, 20))  # под шипы серьги
     return lever
 
 
@@ -320,7 +332,7 @@ def latch_bail(preload: float = 0.0) -> cq.Workplane:
     x_in = LUG_HALF + GAP + CHEEK_T + GAP
     x_out = x_in + BAIL_T
     # плечо в локальных координатах: вдоль оси (u) от P2 к K, ширина 5
-    arm = (cq.Workplane("YZ").slot2D(L + 5.0, 5.0, 0).extrude(BAIL_T)
+    arm = (cq.Workplane("YZ").slot2D(L + BAIL_ARM_W, BAIL_ARM_W, 0).extrude(BAIL_T)
            .translate((0, L / 2, 0)))
     bar = cq.Workplane("YZ").circle(BAIL_BAR_D / 2).extrude(2 * x_out).translate((-x_out, L, 0))
     peg = cq.Workplane("YZ").circle(PEG_D / 2).extrude(CHEEK_T + GAP)
@@ -340,13 +352,14 @@ def latch_bail(preload: float = 0.0) -> cq.Workplane:
 def latch_keeper() -> cq.Workplane:
     """Зацеп на кромке крышки (в координатах сборки); перекладина серьги ложится сверху."""
     half = LUG_HALF + GAP + CHEEK_T + GAP - 0.4
-    k = _x_extrude(_yz([(LID_OVER - 0.5, 0.0), (6.5, 0.0), (6.5, LID_T + 0.1), (LID_OVER - 0.5, LID_T + 0.1)]),
-                   -half, half)
-    lip = _x_extrude(_yz([(5.6, LID_T + 0.1), (7.2, LID_T + 0.1), (7.2, LID_T + 2.4), (5.9, LID_T + 2.4)]),
-                     -half, half)
+    ko = LATCH_KY + BAIL_BAR_D / 2 + 0.4  # упор сразу за перекладиной
+    k = _x_extrude(_yz([(LID_OVER - 0.5, 0.0), (ko + 1.8, 0.0), (ko + 1.8, LID_T + 0.1),
+                        (LID_OVER - 0.5, LID_T + 0.1)]), -half, half)
+    lip = _x_extrude(_yz([(ko, LID_T + 0.1), (ko + 1.8, LID_T + 0.1), (ko + 1.8, LID_T + 2.8),
+                          (ko + 0.3, LID_T + 2.8)]), -half, half)
     k = k.union(lip)
     # снизу 45°, чтобы не мешал при открывании и печатался
-    cut = _x_extrude(_yz([(LID_OVER, -0.01), (6.6, -0.01), (6.6, 2.5)]), -10, 10)
+    cut = _x_extrude(_yz([(LID_OVER, -0.01), (ko + 1.9, -0.01), (ko + 1.9, 2.5)]), -20, 20)
     return k.cut(cut)
 
 
@@ -418,7 +431,8 @@ def body() -> cq.Workplane:
 
     # рёбра дна C и торцов A/B
     for sy in (-1, 1):
-        b = b.union(bottom_rib(sy * (W / 2 - RIB_EDGE_C - RIB_BASE / 2)))
+        if BOTTOM_RIBS:
+            b = b.union(bottom_rib(sy * (W / 2 - RIB_EDGE_C - RIB_BASE / 2)))
         for sx in (-1, 1):
             b = b.union(end_rib(sx, sy * (RIB_GAP_AB / 2 + RIB_BASE / 2)))
 
@@ -442,6 +456,13 @@ def body() -> cq.Workplane:
                 loop = loop.mirror("XZ")
             b = b.union(loop.translate((sx * STRAP_X, 0, 0)))
 
+    # фланец стыка двух половин (корпус режется по x=0 под стол принтера)
+    b = b.union(joint_flange())
+    for sy in (-1, 1):
+        for z in JOINT_BOLT_Z:
+            b = b.cut(cq.Workplane("YZ").circle(JOINT_BOLT_D / 2).extrude(20, both=True)
+                      .translate((0, sy * (W / 2 + JOINT_FL_OUT / 2 + 0.5), z)))
+
     # проушины защёлок
     for x in LATCH_X:
         for sy in (-1, 1):
@@ -455,6 +476,41 @@ def body() -> cq.Workplane:
     b = b.cut(end_hole(+1, 0, BAT_Z0 + 30, CHARGE_PORT))
     b = b.cut(end_hole(-1, 0, BAT_Z0 + PACK_Z * 0.6, VENT_M12))
     return b
+
+
+def joint_flange() -> cq.Workplane:
+    """U-образный наружный фланец по линии разреза x=0 (бока + низ)."""
+    sl = outer_form().intersect(cq.Workplane().box(1, 2000, 2000).translate((0.5, 0, 0)))
+    f = sl.faces("<X").val()
+    w = f.outerWire().offset2D(JOINT_FL_OUT, "arc")[0]
+    fl = cq.Workplane().add(cq.Solid.extrudeLinear(cq.Face.makeFromWires(w), cq.Vector(2 * JOINT_FL_T, 0, 0)))
+    fl = fl.translate((-JOINT_FL_T, 0, 0)).cut(outer_form())
+    z0 = -RIB_H if BOTTOM_RIBS else -0.01
+    clip = cq.Workplane("XY").box(2 * JOINT_FL_T, W + 4 * JOINT_FL_OUT, BASE_H - 3 - z0,
+                                  centered=(True, True, False)).translate((0, 0, z0))
+    fl = fl.intersect(clip)
+    try:
+        fl = fl.edges("|X").fillet(2.0)
+    except Exception:
+        pass
+    return fl
+
+
+def _halfspace(x0: float, x1: float, z0: float = -1000, z1: float = 1000) -> cq.Workplane:
+    return cq.Workplane("XY").box(x1 - x0, 2000, z1 - z0, centered=False).translate((x0, -1000, z0))
+
+
+def split_plain(shape: cq.Workplane) -> tuple[cq.Workplane, cq.Workplane]:
+    """Разрез по x=0: (передняя половина, задняя половина)."""
+    return shape.intersect(_halfspace(-1000, 0)), shape.intersect(_halfspace(0, 1000))
+
+
+def split_lap(shape: cq.Workplane, lap: float, z_step: float) -> tuple[cq.Workplane, cq.Workplane]:
+    """Разрез по x=0 со ступенчатым нахлёстом: передняя половина снизу, задняя сверху."""
+    g, h = LAP_GAP, lap / 2
+    front = shape.intersect(_halfspace(-1000, -h - g).union(_halfspace(-1000, h - g, -1000, z_step - g / 2)))
+    rear = shape.intersect(_halfspace(h, 1000).union(_halfspace(-h, 1000, z_step + g / 2, 1000)))
+    return front, rear
 
 
 def lid() -> cq.Workplane:
@@ -535,11 +591,16 @@ def build():
              # детали защёлки -- в нуле оси рычага
              "latch_lever": latch_lever().translate((0, -y1, -z1)),
              "latch_bail": latch_bail(LATCH_PRELOAD).translate((0, -y1, -z1))}
+    parts["body_front"], parts["body_rear"] = split_plain(parts["body"])
+    parts["lid_front"], parts["lid_rear"] = split_lap(parts["lid"], LAP_LID, LID_T / 2)
+    parts["shelf_front"], parts["shelf_rear"] = split_lap(parts["shelf"], LAP_SHELF, SHELF_T / 2)
     bat, bms = dummy_battery()
     asm = cq.Assembly(name="ebike_frame_box")
-    asm.add(parts["body"], name="body", color=cq.Color(0.55, 0.57, 0.6, 1))
-    asm.add(parts["lid"], name="lid", loc=cq.Location((0, 0, BASE_H)), color=cq.Color(0.2, 0.2, 0.22, 1))
-    asm.add(parts["shelf"], name="shelf", loc=cq.Location((0, 0, SHELF_Z)), color=cq.Color(0.4, 0.4, 0.45, 1))
+    grey, dark, mid = cq.Color(0.55, 0.57, 0.6, 1), cq.Color(0.2, 0.2, 0.22, 1), cq.Color(0.4, 0.4, 0.45, 1)
+    for half in ("front", "rear"):
+        asm.add(parts[f"body_{half}"], name=f"body_{half}", color=grey)
+        asm.add(parts[f"lid_{half}"], name=f"lid_{half}", loc=cq.Location((0, 0, BASE_H)), color=dark)
+        asm.add(parts[f"shelf_{half}"], name=f"shelf_{half}", loc=cq.Location((0, 0, SHELF_Z)), color=mid)
     for i, l in enumerate(placed_latches()):
         asm.add(l, name=f"latch_part_{i + 1}", color=cq.Color(0.85, 0.55, 0.1, 1))
     asm.add(dummy_controller(), name="controller_dummy", color=cq.Color(0.75, 0.3, 0.1, 1))
@@ -595,38 +656,48 @@ def checks(parts) -> list[str]:
     return out
 
 
+PRINT_PARTS = {  # что печатать и сколько штук; ориентация -- см. README
+    "body_front": 1, "body_rear": 1, "lid_front": 1, "lid_rear": 1,
+    "shelf_front": 1, "shelf_rear": 1, "latch_lever": 4, "latch_bail": 4,
+}
+
+
 def report(parts) -> str:
     lines = [
         f"Корпус: верх {TOP_L:.0f}, низ {BOT_L:.0f}, высота {H:.0f}, ширина {W:.0f} мм "
-        f"(+ рёбра {RIB_H:.0f} мм; петли ремней и защёлки выступают на ~{STRAP_T + LOOP_BAR + 3:.0f} мм)",
+        f"(+ рёбра {RIB_H:.0f} мм; петли, замки и фланец стыка выступают на ~{JOINT_FL_OUT:.0f} мм)",
         f"Батарея {'на боку' if BAT_ON_SIDE else 'плашмя'}: с BMS занимает "
         f"{PACK_Y:.0f} мм поперёк и {PACK_Z:.0f} мм по высоте",
         f"Полка на высоте {SHELF_Z:.0f} мм",
         "",
-        "Габариты деталей (X x Y x Z, мм):",
+        f"Детали для печати (стол {PRINT_BED[0]:.0f} x {PRINT_BED[1]:.0f} x {PRINT_BED[2]:.0f}), "
+        "габарит X x Y x Z, мм:",
     ]
-    for name, p in parts.items():
-        bb = p.val().BoundingBox()
+    for name, qty in PRINT_PARTS.items():
+        bb = parts[name].val().BoundingBox()
         a, b = max(bb.xlen, bb.ylen), min(bb.xlen, bb.ylen)
-        S = min(PRINT_BED)
-        if a <= max(PRINT_BED) and b <= S:
-            note = "ok"
-        elif (a + b) / math.sqrt(2) <= S:
-            note = "! только по диагонали стола"
-        else:
-            note = f"!! больше стола {PRINT_BED[0]:.0f}x{PRINT_BED[1]:.0f}"
-        qty = " x4" if name.startswith("latch") else ""
-        lines.append(f"  {name:11s}{qty:3s} {bb.xlen:6.1f} x {bb.ylen:6.1f} x {bb.zlen:6.1f}  {note}")
+        fits = a <= max(PRINT_BED[:2]) and b <= min(PRINT_BED[:2]) and bb.zlen <= PRINT_BED[2]
+        lines.append(f"  {name:12s} x{qty}  {bb.xlen:6.1f} x {bb.ylen:6.1f} x {bb.zlen:6.1f}  "
+                     f"{'влезает' if fits else '!! НЕ ВЛЕЗАЕТ'}")
     lines += ["", "Проверки:"] + checks(parts)
+    # половины не пересекаются и вместе дают целую деталь
+    for n in ("body", "lid", "shelf"):
+        f, r = parts[f"{n}_front"], parts[f"{n}_rear"]
+        ov = _vol(f, r)
+        lost = parts[n].val().Volume() - f.val().Volume() - r.val().Volume()
+        lines.append(f"  {n + ': половины':26s} {'OK' if ov < 0.5 else f'ПЕРЕСЕЧЕНИЕ {ov:.0f} мм3'}"
+                     f" (зазоры нахлёста {lost:.0f} мм3)")
     return "\n".join(lines)
 
 
 if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
+    for old in OUT.glob("*.st[lp]"):
+        old.unlink()
     parts, asm = build()
-    for name, p in parts.items():
-        cq.exporters.export(p, str(OUT / f"{name}.stl"), tolerance=0.03, angularTolerance=0.1)
-        cq.exporters.export(p, str(OUT / f"{name}.step"))
+    for name in PRINT_PARTS:
+        cq.exporters.export(parts[name], str(OUT / f"{name}.stl"), tolerance=0.03, angularTolerance=0.1)
+        cq.exporters.export(parts[name], str(OUT / f"{name}.step"))
     asm.export(str(OUT / "assembly.step"))
     txt = report(parts)
     (OUT / "dimensions.txt").write_text(txt + "\n", encoding="utf-8")
